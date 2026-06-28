@@ -112,8 +112,112 @@ async function ping() {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// People Directory Operations
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Fetch all registered people profiles from the database, sorted alphabetically.
+ *
+ * @returns {Promise<Object[]>} Array of { id, name, relation, notes, created_at }
+ */
+async function getAllPeople() {
+  const { data, error } = await supabase
+    .from('people')
+    .select('id, name, relation, notes, created_at')
+    .order('name', { ascending: true });
+
+  if (error) {
+    console.error('[DB] getAllPeople error:', error.message);
+    throw new Error(`Database fetch failed: ${error.message}`);
+  }
+
+  return data || [];
+}
+
+/**
+ * Insert a new person profile into the database.
+ *
+ * @param {Object} personData
+ * @param {string} personData.name - Person's name
+ * @param {string} personData.relation - E.g. friend, family, enemy
+ * @param {string} [personData.notes] - Key details
+ * @returns {Promise<Object>} The newly created person record
+ */
+async function insertPerson(personData) {
+  const { data, error } = await supabase
+    .from('people')
+    .insert({
+      name: personData.name,
+      relation: personData.relation,
+      notes: personData.notes || '',
+    })
+    .select('id, name, relation, notes, created_at')
+    .single();
+
+  if (error) {
+    console.error('[DB] insertPerson error:', error.message);
+    throw new Error(`Failed to create person: ${error.message}`);
+  }
+
+  return data;
+}
+
+/**
+ * Find existing people profiles matching a list of names.
+ * Used for auto-linking matches during ingestion.
+ *
+ * @param {string[]} names - List of names to search for (case-insensitive)
+ * @returns {Promise<Object[]>} Array of matching people rows
+ */
+async function findPeopleByNames(names) {
+  if (!names || names.length === 0) return [];
+
+  // Match names using simple case-insensitive matching
+  const { data, error } = await supabase
+    .from('people')
+    .select('id, name, relation, notes')
+    .in('name', names);
+
+  if (error) {
+    console.error('[DB] findPeopleByNames error:', error.message);
+    throw new Error(`Database search failed: ${error.message}`);
+  }
+
+  return data || [];
+}
+
+/**
+ * Link a memory to multiple people profiles via the many-to-many join table.
+ *
+ * @param {string} memoryId - UUID of the memory
+ * @param {string[]} personIds - UUID list of the people involved
+ * @returns {Promise<void>}
+ */
+async function linkMemoryToPeople(memoryId, personIds) {
+  if (!personIds || personIds.length === 0) return;
+
+  const joinRows = personIds.map((pid) => ({
+    memory_id: memoryId,
+    person_id: pid,
+  }));
+
+  const { error } = await supabase
+    .from('memory_people')
+    .insert(joinRows);
+
+  if (error) {
+    console.error('[DB] linkMemoryToPeople error:', error.message);
+    throw new Error(`Failed to link memory to people: ${error.message}`);
+  }
+}
+
 module.exports = {
   insertMemory,
   hybridSearch,
   ping,
+  getAllPeople,
+  insertPerson,
+  findPeopleByNames,
+  linkMemoryToPeople,
 };

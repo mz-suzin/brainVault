@@ -23,12 +23,14 @@ RULES:
    but you may create a new descriptive category if absolutely none fits:
    health, fitness, travel, work, education, family, friends, relationship, 
    finance, hobby, food, milestone, medical, home, technology, entertainment, pets, spiritual, other
-5. Extract 3-7 key entity tags: people names, places, activities, objects, or concepts.
-   Tags must be lowercase. Use singular nouns. Proper names keep their capitalization.
-6. Produce a raw_transcript: 
+5. Extract 3-7 key entity tags: places, activities, objects, or concepts. Tags must be lowercase. Use singular nouns.
+6. Extract people_mentioned: an array of names of people explicitly mentioned in the text. Preserve their capitalization as proper names.
+7. Produce a raw_transcript: 
    - If the input is audio, transcribe it literally and verbatim (word-for-word). Only clean stutters, stumbles, repetitions, grammar errors, and filler words (um, uh, like, you know).
    - If the input is text, copy the original input text exactly.
-7. Produce a cleaned_text: a clear, concise, third-person past-tense summary of the memory.
+8. Produce a cleaned_text: a clear, concise, third-person past-tense summary of the memory.
+   - Always refer to the narrator ("I", "me", "my", "we") actively as "the user" (e.g. translate "I created the app" to "the user created the app"). 
+   - Avoid passive voice where the user's agency is lost (e.g., use "the user created the brainVault app" instead of "the brainVault app was created").
    - Preserve ALL factual details (dates, names, places, numbers).
    - Fix grammar and remove filler words (um, uh, like, you know).
    - Do NOT add information that was not in the original input.
@@ -51,6 +53,7 @@ Respond with this exact JSON structure:
   "event_date_raw": "original date expression or null",
   "subject": "category string",
   "tags": ["tag1", "tag2", "tag3"],
+  "people_mentioned": ["Name 1", "Name 2"],
   "raw_transcript": "literal verbatim transcription or original input text",
   "cleaned_text": "cleaned summary of the memory"
 }

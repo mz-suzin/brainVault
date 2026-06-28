@@ -197,6 +197,71 @@ async function synthesizeAnswer(question, memories) {
   return response.text;
 }
 
+/**
+ * Deduce which specific database profile (candidate) is referred to in a memory mention.
+ * Uses Gemini to evaluate context clues against relation type and notes.
+ *
+ * @param {string} memoryText - Original memory description / transcript
+ * @param {string} name - Name being disambiguated (e.g. "John")
+ * @param {Object[]} candidates - Array of duplicate database profiles: { id, name, relation, notes }
+ * @returns {Promise<Object>} { resolved: boolean, resolved_id: string|null, reasoning: string }
+ */
+async function resolvePersonDisambiguation(memoryText, name, candidates) {
+  const systemInstruction = `You are a name resolution assistant.
+The user wrote a memory that mentions the name "${name}".
+There are multiple people in the database with this name.
+Your task is to review the memory context and candidates, and decide if one candidate matches.
+
+RULES:
+1. If the memory context matches a candidate's relation or notes, resolve to that candidate.
+   - Example: Memory mentions "meeting about projects" -> links "John (Colleague, notes: Software Developer)"
+   - Example: Memory mentions "having Sunday family dinner" -> links "John (Family, notes: My brother)"
+2. If there are no clear contextual clues, set "resolved" to false and "resolved_id" to null.
+3. Be conservative: only resolve if you have reasonable confidence (e.g. > 0.8). If it could be either, do not resolve.
+4. Return ONLY valid JSON matching the schema. No explanations, no markdown fences.`;
+
+  const userContent = `Memory text: "${memoryText}"
+
+Candidates:
+${candidates.map((c, i) => `${i + 1}. ID: "${c.id}" | Name: "${c.name}" | Relation: "${c.relation}" | Notes: "${c.notes}"`).join('\n')}
+
+Respond with this exact JSON structure:
+{
+  "resolved": true or false,
+  "resolved_id": "matching-uuid-string" or null,
+  "reasoning": "brief explanation of your decision"
+}`;
+
+  try {
+    const response = await callWithRetry(() =>
+      ai.models.generateContent({
+        model: FLASH_MODEL,
+        contents: [{ role: 'user', parts: [{ text: userContent }] }],
+        config: {
+          systemInstruction,
+          temperature: 0.1, // low temperature for logical matching
+          maxOutputTokens: 512,
+        },
+      })
+    );
+
+    let cleaned = response.text.trim();
+    if (cleaned.startsWith('```')) {
+      cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+    }
+
+    const result = JSON.parse(cleaned);
+    return {
+      resolved: !!result.resolved && !!result.resolved_id,
+      resolved_id: result.resolved_id || null,
+      reasoning: result.reasoning || '',
+    };
+  } catch (err) {
+    console.error('[GEMINI] Disambiguation deduction failed:', err.message);
+    return { resolved: false, resolved_id: null, reasoning: err.message };
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Response Parsing
 // ─────────────────────────────────────────────────────────────────────────────
@@ -235,6 +300,9 @@ function parseExtractionResponse(rawText) {
       tags: Array.isArray(parsed.tags)
         ? parsed.tags.map((t) => String(t).toLowerCase().trim()).filter(Boolean)
         : [],
+      people_mentioned: Array.isArray(parsed.people_mentioned)
+        ? parsed.people_mentioned.map((n) => String(n).trim()).filter(Boolean)
+        : [],
       raw_transcript: parsed.raw_transcript ? parsed.raw_transcript.trim() : null,
       cleaned_text: parsed.cleaned_text.trim(),
     };
@@ -249,4 +317,5 @@ module.exports = {
   extractMemoryFromAudio,
   generateEmbedding,
   synthesizeAnswer,
+  resolvePersonDisambiguation,
 };

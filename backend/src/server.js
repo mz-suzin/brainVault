@@ -13,6 +13,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const memoryRoutes = require('./routes/memory');
+const peopleRoutes = require('./routes/people');
 const { startKeepAlive } = require('./utils/keepalive');
 
 const app = express();
@@ -60,6 +61,9 @@ app.get('/api/health', (_req, res) => {
 
 // Memory endpoints (add + query)
 app.use('/api/memory', memoryRoutes);
+
+// People endpoints
+app.use('/api/people', peopleRoutes);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Error Handling
