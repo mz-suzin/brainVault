@@ -316,10 +316,56 @@ function parseExtractionResponse(rawText) {
   }
 }
 
+/**
+ * Merge existing person profile facts with newly extracted facts into a single, cohesive, non-redundant note.
+ *
+ * @param {string} existingNotes - Current notes in DB
+ * @param {string} newNotes - Newly extracted notes from memory
+ * @returns {Promise<string>} Cleaned, merged notes
+ */
+async function mergePersonNotes(existingNotes, newNotes) {
+  if (!existingNotes || !existingNotes.trim()) return newNotes ? newNotes.trim() : '';
+  if (!newNotes || !newNotes.trim()) return existingNotes ? existingNotes.trim() : '';
+
+  const systemInstruction = `You are a facts aggregator. 
+Combine the "Existing Profile Notes" and the "New Facts" about a person into a single, unified, coherent summary.
+
+RULES:
+1. Preserve ALL unique, non-redundant factual details from both inputs (e.g. nicknames, relations, interests, specific memories, dates). Never discard a unique fact.
+2. Remove any duplicate, overlapping, or redundant facts.
+3. If there is a direct contradiction, favor the "New Facts".
+4. Write in a neutral, third-person descriptive tone.
+5. Do NOT set artificial length limits. The notes can be as long as necessary to capture all unique facts, but keep the writing concise and direct.
+6. Organize the facts cleanly using short, clear sentences. Do NOT output JSON or explanations, just the plain text notes.`;
+
+  const userContent = `Existing Profile Notes: "${existingNotes}"
+New Facts: "${newNotes}"`;
+
+  try {
+    const response = await callWithRetry(() =>
+      ai.models.generateContent({
+        model: FLASH_MODEL,
+        contents: [{ role: 'user', parts: [{ text: userContent }] }],
+        config: {
+          systemInstruction,
+          temperature: 0.2, // low temperature for clean aggregation
+          maxOutputTokens: 256,
+        },
+      })
+    );
+    return response.text.trim();
+  } catch (err) {
+    console.error('[GEMINI] Merging notes failed:', err.message);
+    // Fallback: Concatenate with a semicolon
+    return `${existingNotes.trim()}; ${newNotes.trim()}`;
+  }
+}
+
 module.exports = {
   extractMemoryFromText,
   extractMemoryFromAudio,
   generateEmbedding,
   synthesizeAnswer,
   resolvePersonDisambiguation,
+  mergePersonNotes,
 };

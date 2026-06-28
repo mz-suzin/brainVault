@@ -13,6 +13,7 @@ const {
   generateEmbedding,
   synthesizeAnswer,
   resolvePersonDisambiguation,
+  mergePersonNotes,
 } = require('../services/gemini');
 const {
   insertMemory,
@@ -20,6 +21,8 @@ const {
   insertPerson,
   findPeopleByNames,
   linkMemoryToPeople,
+  updatePerson,
+  getPersonById,
 } = require('../services/database');
 
 const router = express.Router();
@@ -178,6 +181,23 @@ router.post('/add', upload.single('audio'), async (req, res) => {
       sourceType = req.body.source_type;
       linkedPersonIds = Array.isArray(resolvedPeopleIds) ? resolvedPeopleIds : JSON.parse(resolvedPeopleIds);
 
+      // Merge new facts for the resolved people profiles
+      for (const id of linkedPersonIds) {
+        try {
+          const profile = await getPersonById(id);
+          if (profile) {
+            const details = (extraction.people_details || []).find((p) => p.name === profile.name);
+            if (details) {
+              const relation = details.relation !== 'other' ? details.relation : profile.relation;
+              const mergedNotes = await mergePersonNotes(profile.notes, details.notes);
+              await updatePerson(id, { relation, notes: mergedNotes });
+            }
+          }
+        } catch (err) {
+          console.error(`[ADD] Failed to merge notes during resubmit for ID "${id}":`, err.message);
+        }
+      }
+
     } else {
       // ───────────────────────────────────────────────────────────────────────
       // Path C: Standard Ingestion (Raw Text / Audio)
@@ -226,8 +246,17 @@ router.post('/add', upload.single('audio'), async (req, res) => {
               console.error(`[ADD] Auto-creation failed for "${name}":`, err.message);
             }
           } else if (candidates.length === 1) {
-            // One exact match -> link automatically
-            resolvedIds.push(candidates[0].id);
+            // One exact match -> merge facts and link automatically
+            const match = candidates[0];
+            const relation = person.relation !== 'other' ? person.relation : match.relation;
+            console.log(`[ADD] Updating profile notes for exact match: "${name}"`);
+            try {
+              const mergedNotes = await mergePersonNotes(match.notes, person.notes);
+              await updatePerson(match.id, { relation, notes: mergedNotes });
+            } catch (err) {
+              console.error(`[ADD] Failed to update profile notes for "${name}":`, err.message);
+            }
+            resolvedIds.push(match.id);
           } else if (candidates.length > 1) {
             // Multiple candidates -> Try contextual deduction via Gemini
             console.log(`[ADD] Ambiguity found for "${name}". ${candidates.length} candidates. Querying LLM...`);
@@ -235,6 +264,16 @@ router.post('/add', upload.single('audio'), async (req, res) => {
             
             if (resolution.resolved && resolution.resolved_id) {
               console.log(`[ADD] LLM successfully resolved "${name}" to ID: ${resolution.resolved_id}`);
+              const match = candidates.find((c) => c.id === resolution.resolved_id);
+              if (match) {
+                const relation = person.relation !== 'other' ? person.relation : match.relation;
+                try {
+                  const mergedNotes = await mergePersonNotes(match.notes, person.notes);
+                  await updatePerson(match.id, { relation, notes: mergedNotes });
+                } catch (err) {
+                  console.error(`[ADD] Failed to update profile notes for "${name}":`, err.message);
+                }
+              }
               resolvedIds.push(resolution.resolved_id);
             } else {
               // LLM is unsure -> add to conflict list for interactive fallback

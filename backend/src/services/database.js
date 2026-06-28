@@ -212,6 +212,57 @@ async function linkMemoryToPeople(memoryId, personIds) {
   }
 }
 
+/**
+ * Update an existing person profile's relation and notes.
+ *
+ * @param {string} id - UUID of the person
+ * @param {Object} updateData
+ * @param {string} [updateData.relation] - Relationship type
+ * @param {string} [updateData.notes] - Consolidated notes
+ * @returns {Promise<Object>} The updated person record
+ */
+async function updatePerson(id, updateData) {
+  const fields = {};
+  if (updateData.relation) fields.relation = updateData.relation;
+  if (updateData.notes !== undefined) fields.notes = updateData.notes;
+
+  const { data, error } = await supabase
+    .from('people')
+    .update(fields)
+    .eq('id', id)
+    .select('id, name, relation, notes, created_at')
+    .single();
+
+  if (error) {
+    console.error('[DB] updatePerson error:', error.message);
+    throw new Error(`Failed to update person: ${error.message}`);
+  }
+
+  return data;
+}
+
+/**
+ * Fetch a single person profile by UUID.
+ *
+ * @param {string} id - UUID of the person
+ * @returns {Promise<Object|null>} The person record or null
+ */
+async function getPersonById(id) {
+  const { data, error } = await supabase
+    .from('people')
+    .select('id, name, relation, notes')
+    .eq('id', id)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null; // Row not found
+    console.error('[DB] getPersonById error:', error.message);
+    throw new Error(`Failed to fetch person by ID: ${error.message}`);
+  }
+
+  return data;
+}
+
 module.exports = {
   insertMemory,
   hybridSearch,
@@ -220,4 +271,6 @@ module.exports = {
   insertPerson,
   findPeopleByNames,
   linkMemoryToPeople,
+  updatePerson,
+  getPersonById,
 };
