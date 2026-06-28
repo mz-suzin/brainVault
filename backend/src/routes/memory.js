@@ -114,68 +114,14 @@ router.post('/add', upload.single('audio'), async (req, res) => {
 
     const currentDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
-    if (isConstructed) {
-      // ───────────────────────────────────────────────────────────────────────
-      // Path A: Structured "Construct a Memory" Ingestion
-      // ───────────────────────────────────────────────────────────────────────
-      sourceType = 'text';
-      const description = req.body.description?.trim() || '';
-      const location = req.body.location?.trim() || '';
-      const eventDate = req.body.event_date;
-      
-      // Parse lists from body (usually sent as JSON strings or arrays)
-      const peopleIds = Array.isArray(req.body.people_ids) 
-        ? req.body.people_ids 
-        : req.body.people_ids ? JSON.parse(req.body.people_ids) : [];
-      const newPeople = Array.isArray(req.body.new_people) 
-        ? req.body.new_people 
-        : req.body.new_people ? JSON.parse(req.body.new_people) : [];
+    let isResubmitted = false;
 
-      console.log(`[ADD] Processing constructed memory: "${description.substring(0, 50)}..."`);
-
-      // 1. Save any new inline people profiles
-      for (const person of newPeople) {
-        if (person.name?.trim()) {
-          try {
-            const created = await insertPerson({
-              name: person.name.trim(),
-              relation: person.relation || 'other',
-              notes: person.notes || '',
-            });
-            linkedPersonIds.push(created.id);
-          } catch (err) {
-            // If unique constraint triggers (person already exists), we fetch them
-            console.log(`[ADD] Person "${person.name}" already exists, fetching profile.`);
-            const matches = await findPeopleByNames([person.name.trim()]);
-            if (matches.length > 0) {
-              linkedPersonIds.push(matches[0].id);
-            }
-          }
-        }
-      }
-
-      // Merge with already selected people IDs
-      linkedPersonIds = [...new Set([...linkedPersonIds, ...peopleIds])];
-
-      // 2. Formulate rich text narrative description for embedding
-      let locationText = location ? ` at ${location}` : '';
-      let dateText = eventDate ? ` on ${eventDate}` : '';
-      rawText = `Constructed Memory: ${description}${locationText}${dateText}.`;
-      
-      // Build a clean summary
-      extraction = {
-        event_date: eventDate || null,
-        event_date_raw: eventDate || null,
-        subject: req.body.subject?.trim() || 'milestone',
-        tags: Array.isArray(req.body.tags) ? req.body.tags : [],
-        cleaned_text: `${description}${locationText}.`,
-      };
-
-    } else if (resolvedPeopleIds && tempExtraction) {
+    if (resolvedPeopleIds && tempExtraction) {
       // ───────────────────────────────────────────────────────────────────────
       // Path B: Resubmitted Memory (W/ Resolved Ambiguities)
       // ───────────────────────────────────────────────────────────────────────
       console.log('[ADD] Processing resubmitted resolved memory');
+      isResubmitted = true;
       extraction = typeof tempExtraction === 'string' ? JSON.parse(tempExtraction) : tempExtraction;
       rawText = req.body.raw_text;
       sourceType = req.body.source_type;
@@ -197,30 +143,92 @@ router.post('/add', upload.single('audio'), async (req, res) => {
           console.error(`[ADD] Failed to merge notes during resubmit for ID "${id}":`, err.message);
         }
       }
+    } else if (isConstructed) {
+      // ───────────────────────────────────────────────────────────────────────
+      // Path A: Structured "Construct a Memory" Ingestion
+      // ───────────────────────────────────────────────────────────────────────
+      sourceType = 'text';
+      const description = req.body.description?.trim() || '';
+      const location = req.body.location?.trim() || '';
+      const eventDate = req.body.event_date;
+      
+      const peopleIds = Array.isArray(req.body.people_ids) 
+        ? req.body.people_ids 
+        : req.body.people_ids ? JSON.parse(req.body.people_ids) : [];
+      const newPeople = Array.isArray(req.body.new_people) 
+        ? req.body.new_people 
+        : req.body.new_people ? JSON.parse(req.body.new_people) : [];
 
+      // Save any new inline people profiles
+      for (const person of newPeople) {
+        if (person.name?.trim()) {
+          try {
+            const created = await insertPerson({
+              name: person.name.trim(),
+              relation: person.relation || 'other',
+              notes: person.notes || '',
+            });
+            linkedPersonIds.push(created.id);
+          } catch (err) {
+            // If unique constraint triggers (person already exists), fetch them
+            const matches = await findPeopleByNames([person.name.trim()]);
+            if (matches.length > 0) linkedPersonIds.push(matches[0].id);
+          }
+        }
+      }
+
+      linkedPersonIds = [...new Set([...linkedPersonIds, ...peopleIds])];
+
+      const explicitPeopleNames = [];
+      for (const id of linkedPersonIds) {
+        try {
+          const profile = await getPersonById(id);
+          if (profile) explicitPeopleNames.push(profile.name);
+        } catch (e) {}
+      }
+
+      let locationText = location ? ` em ${location}` : '';
+      let dateText = eventDate ? ` no dia ${eventDate}` : '';
+      rawText = `${description}${locationText}${dateText}.`;
+      
+      let llmText = rawText;
+      if (explicitPeopleNames.length > 0) {
+        llmText += ` [Note: The user explicitly indicated that these people are involved in this memory: ${explicitPeopleNames.join(', ')}. Resolve pronouns like "we" or "nós" to include them.]`;
+      }
+      
+      console.log(`[ADD] Processing constructed memory text via LLM: "${llmText.substring(0, 80)}..."`);
+      extraction = await extractMemoryFromText(llmText, currentDate);
+
+      // Honor the explicitly constructed date if provided
+      if (eventDate) {
+        extraction.event_date = eventDate;
+        extraction.event_date_raw = eventDate;
+      }
     } else {
       // ───────────────────────────────────────────────────────────────────────
       // Path C: Standard Ingestion (Raw Text / Audio)
       // ───────────────────────────────────────────────────────────────────────
       if (!textInput && !audioFile) {
-        return res.status(400).json({
-          error: 'Please provide either a text memory or an audio recording.',
-        });
+        return res.status(400).json({ error: 'Please provide either a text memory or an audio recording.' });
       }
 
       if (audioFile) {
         sourceType = 'audio';
-        console.log(`[ADD] Processing audio: ${audioFile.originalname} (${audioFile.mimetype}, ${audioFile.size} bytes)`);
+        console.log(`[ADD] Processing audio: ${audioFile.originalname}`);
         extraction = await extractMemoryFromAudio(audioFile.buffer, audioFile.mimetype, currentDate);
         rawText = extraction.raw_transcript || extraction.cleaned_text;
       } else {
         sourceType = 'text';
         rawText = textInput;
-        console.log(`[ADD] Processing text: "${textInput.substring(0, 80)}..."`);
+        console.log(`[ADD] Processing text: "${textInput.substring(0, 50)}..."`);
         extraction = await extractMemoryFromText(textInput, currentDate);
       }
+    }
 
-      // ── Name Conflict Resolution / Disambiguation ──
+    // ─────────────────────────────────────────────────────────────────────────
+    // ── Name Conflict Resolution / Disambiguation (Paths A & C)
+    // ─────────────────────────────────────────────────────────────────────────
+    if (!isResubmitted) {
       const details = extraction.people_details || [];
       if (details.length > 0) {
         console.log(`[ADD] People mentioned by LLM: ${details.map((p) => p.name).join(', ')}`);
@@ -233,8 +241,8 @@ router.post('/add', upload.single('audio'), async (req, res) => {
           const candidates = await findPeopleByNames([name]);
           
           if (candidates.length === 0) {
-            // 0 matches -> This is a brand new person! Auto-create their profile.
-            console.log(`[ADD] Creating profile automatically for new person: "${name}" (${person.relation})`);
+            // Brand new person auto-creation
+            console.log(`[ADD] Auto-creating profile for new person: "${name}"`);
             try {
               const created = await insertPerson({
                 name: name,
@@ -246,44 +254,35 @@ router.post('/add', upload.single('audio'), async (req, res) => {
               console.error(`[ADD] Auto-creation failed for "${name}":`, err.message);
             }
           } else if (candidates.length === 1) {
-            // One exact match -> merge facts and link automatically
+            // One exact match -> merge facts
             const match = candidates[0];
             const relation = person.relation !== 'other' ? person.relation : match.relation;
-            console.log(`[ADD] Updating profile notes for exact match: "${name}"`);
             try {
               const mergedNotes = await mergePersonNotes(match.notes, person.notes);
               await updatePerson(match.id, { relation, notes: mergedNotes });
-            } catch (err) {
-              console.error(`[ADD] Failed to update profile notes for "${name}":`, err.message);
-            }
+            } catch (err) {}
             resolvedIds.push(match.id);
           } else if (candidates.length > 1) {
-            // Multiple candidates -> Try contextual deduction via Gemini
-            console.log(`[ADD] Ambiguity found for "${name}". ${candidates.length} candidates. Querying LLM...`);
+            // Multiple candidates -> contextual deduction
+            console.log(`[ADD] Ambiguity found for "${name}". Querying LLM...`);
             const resolution = await resolvePersonDisambiguation(rawText, name, candidates);
             
             if (resolution.resolved && resolution.resolved_id) {
-              console.log(`[ADD] LLM successfully resolved "${name}" to ID: ${resolution.resolved_id}`);
               const match = candidates.find((c) => c.id === resolution.resolved_id);
               if (match) {
                 const relation = person.relation !== 'other' ? person.relation : match.relation;
                 try {
                   const mergedNotes = await mergePersonNotes(match.notes, person.notes);
                   await updatePerson(match.id, { relation, notes: mergedNotes });
-                } catch (err) {
-                  console.error(`[ADD] Failed to update profile notes for "${name}":`, err.message);
-                }
+                } catch (err) {}
               }
               resolvedIds.push(resolution.resolved_id);
             } else {
-              // LLM is unsure -> add to conflict list for interactive fallback
-              console.log(`[ADD] LLM unable to resolve "${name}" confidently. Fallback to interactive.`);
               conflicts.push({ name, candidates });
             }
           }
         }
 
-        // If there are conflicts we cannot resolve, halt execution and return them to the client
         if (conflicts.length > 0) {
           return res.json({
             status: 'disambiguation_required',
@@ -292,12 +291,13 @@ router.post('/add', upload.single('audio'), async (req, res) => {
               raw_text: rawText,
               source_type: sourceType,
               extraction: extraction,
-              already_resolved_ids: resolvedIds,
+              already_resolved_ids: [...new Set([...linkedPersonIds, ...resolvedIds])],
             }
           });
         }
 
-        linkedPersonIds = resolvedIds;
+        // Merge LLM-resolved IDs with any pre-selected IDs from wizard
+        linkedPersonIds = [...new Set([...linkedPersonIds, ...resolvedIds])];
       }
     }
 
