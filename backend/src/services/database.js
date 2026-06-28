@@ -13,11 +13,13 @@ const { createClient } = require('@supabase/supabase-js');
 // Initialize Supabase Client
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Using the service-role key (bypasses Row Level Security)
-// This is safe because the backend is the only client — the key is never exposed
+// Initialize Supabase Client using the Secret Key (formerly service_role key)
+// This is safe because the backend is the only client — the key is never exposed to the frontend.
+const supabaseSecretKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY;
+
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
+  supabaseSecretKey
 );
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -42,9 +42,9 @@ backend/
 6. Create another new query → paste [`db/search_function.sql`](db/search_function.sql) → click **"Run"**
 7. Go to **Project Settings** → **API** and copy:
    - **Project URL** → this is your `SUPABASE_URL`
-   - **service_role key** (under "Project API keys") → this is your `SUPABASE_SERVICE_KEY`
+   - **Secret Key** (under "Project API keys", formerly `service_role` key) → this is your `SUPABASE_SECRET_KEY`
 
-> ⚠️ **Use the `service_role` key**, not the `anon` key. The service role key bypasses Row Level Security, which is needed since the backend is the only client.
+> ⚠️ **Use the "Secret Key" (service_role)**, not the "Publishable Key" (anon). The Secret Key bypasses Row Level Security, which is required since our backend is a secure, server-side client.
 
 ### 3. Google AI Studio Setup
 
@@ -62,7 +62,7 @@ Fill in your `.env`:
 ```env
 GEMINI_API_KEY=your_key_here
 SUPABASE_URL=https://xxxx.supabase.co
-SUPABASE_SERVICE_KEY=eyJhbGci...
+SUPABASE_SECRET_KEY=eyJhbGci...
 PORT=3000
 NODE_ENV=development
 ```
@@ -119,7 +119,7 @@ curl -X POST http://localhost:3000/api/memory/query \
    - **Build Command:** `npm install`
    - **Start Command:** `node src/server.js`
    - **Instance Type:** Free
-5. Add environment variables: `GEMINI_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `NODE_ENV=production`
+5. Add environment variables: `GEMINI_API_KEY`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY` (or `SUPABASE_SERVICE_KEY`), `NODE_ENV=production`
 6. Deploy!
 
 The keep-alive cron (every 14 min) auto-starts in production to prevent container spin-down.
