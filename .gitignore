@@ -1,0 +1,68 @@
+# ========================
+# Dependencies
+# ========================
+node_modules/
+.pnp/
+.pnp.js
+
+# ========================
+# Build & Output
+# ========================
+dist/
+build/
+.next/
+.turbo/
+out/
+*.tgz
+
+# ========================
+# Environment Variables
+# ========================
+.env
+.env.local
+.env.*.local
+.env.development
+.env.test
+.env.production
+
+# ========================
+# IDE / Editor
+# ========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-workspace
+*.sublime-project
+
+# ========================
+# OS Files
+# ========================
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# ========================
+# Logs & Debug
+# ========================
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ========================
+# Testing & Coverage
+# ========================
+coverage/
+.nyc_output/
+*.lcov
+
+# ========================
+# Cache
+# ========================
+.cache/
+.eslintcache
+.parcel-cache/

@@ -1,0 +1,37 @@
+name: brainvault
+description: "BrainVault — Your external memory. A secure vault for recording, categorizing, and querying life events."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # HTTP client for backend API communication
+  http: ^1.2.0
+
+  # Audio recording (M4A/AAC, cross-platform)
+  record: ^6.0.0
+
+  # Runtime permission handling (microphone)
+  permission_handler: ^12.0.0
+
+  # Temporary file paths for audio recordings
+  path_provider: ^2.1.0
+
+  # Premium typography (Inter font family)
+  google_fonts: ^6.2.0
+
+  # Material icons
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
