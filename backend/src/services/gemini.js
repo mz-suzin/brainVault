@@ -300,8 +300,12 @@ function parseExtractionResponse(rawText) {
       tags: Array.isArray(parsed.tags)
         ? parsed.tags.map((t) => String(t).toLowerCase().trim()).filter(Boolean)
         : [],
-      people_mentioned: Array.isArray(parsed.people_mentioned)
-        ? parsed.people_mentioned.map((n) => String(n).trim()).filter(Boolean)
+      people_details: Array.isArray(parsed.people_details)
+        ? parsed.people_details.map((p) => ({
+            name: String(p.name || '').trim(),
+            relation: String(p.relation || 'other').toLowerCase().trim(),
+            notes: String(p.notes || '').trim(),
+          })).filter((p) => p.name.length > 0)
         : [],
       raw_transcript: parsed.raw_transcript ? parsed.raw_transcript.trim() : null,
       cleaned_text: parsed.cleaned_text.trim(),

@@ -201,21 +201,35 @@ router.post('/add', upload.single('audio'), async (req, res) => {
       }
 
       // ── Name Conflict Resolution / Disambiguation ──
-      const mentioned = extraction.people_mentioned || [];
-      if (mentioned.length > 0) {
-        console.log(`[ADD] People mentioned by LLM: ${mentioned.join(', ')}`);
+      const details = extraction.people_details || [];
+      if (details.length > 0) {
+        console.log(`[ADD] People mentioned by LLM: ${details.map((p) => p.name).join(', ')}`);
         
         const conflicts = [];
         const resolvedIds = [];
 
-        for (const name of mentioned) {
+        for (const person of details) {
+          const name = person.name;
           const candidates = await findPeopleByNames([name]);
           
-          if (candidates.length === 1) {
+          if (candidates.length === 0) {
+            // 0 matches -> This is a brand new person! Auto-create their profile.
+            console.log(`[ADD] Creating profile automatically for new person: "${name}" (${person.relation})`);
+            try {
+              const created = await insertPerson({
+                name: name,
+                relation: person.relation || 'other',
+                notes: person.notes || `Mentioned in memory: "${rawText.substring(0, 60)}..."`,
+              });
+              resolvedIds.push(created.id);
+            } catch (err) {
+              console.error(`[ADD] Auto-creation failed for "${name}":`, err.message);
+            }
+          } else if (candidates.length === 1) {
             // One exact match -> link automatically
             resolvedIds.push(candidates[0].id);
           } else if (candidates.length > 1) {
-            // Multiple Johns -> Try contextual deduction via Gemini
+            // Multiple candidates -> Try contextual deduction via Gemini
             console.log(`[ADD] Ambiguity found for "${name}". ${candidates.length} candidates. Querying LLM...`);
             const resolution = await resolvePersonDisambiguation(rawText, name, candidates);
             

@@ -24,7 +24,11 @@ RULES:
    health, fitness, travel, work, education, family, friends, relationship, 
    finance, hobby, food, milestone, medical, home, technology, entertainment, pets, spiritual, other
 5. Extract 3-7 key entity tags: places, activities, objects, or concepts. Tags must be lowercase. Use singular nouns.
-6. Extract people_mentioned: an array of names of people explicitly mentioned in the text. Preserve their capitalization as proper names.
+6. Extract people_details: an array of objects representing people explicitly mentioned in the text.
+   Each object must contain:
+   - "name": Proper capitalized name of the person.
+   - "relation": Deducible relationship type from taxonomy: friend, close friend, best friend, family, colleague, enemy, other. Default to "other" if unspecified.
+   - "notes": A brief fact or context about this person derived from the memory (e.g. "Colleague of the user who runs").
 7. Produce a raw_transcript: 
    - If the input is audio, transcribe it literally and verbatim (word-for-word). Only clean stutters, stumbles, repetitions, grammar errors, and filler words (um, uh, like, you know).
    - If the input is text, copy the original input text exactly.
@@ -53,7 +57,9 @@ Respond with this exact JSON structure:
   "event_date_raw": "original date expression or null",
   "subject": "category string",
   "tags": ["tag1", "tag2", "tag3"],
-  "people_mentioned": ["Name 1", "Name 2"],
+  "people_details": [
+    { "name": "Name", "relation": "relationship type", "notes": "brief fact" }
+  ],
   "raw_transcript": "literal verbatim transcription or original input text",
   "cleaned_text": "cleaned summary of the memory"
 }
