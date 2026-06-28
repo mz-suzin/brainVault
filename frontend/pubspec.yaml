@@ -19,6 +19,9 @@ dependencies:
   # Runtime permission handling (microphone)
   permission_handler: ^12.0.0
 
+  # HTTP media parser support
+  http_parser: ^4.0.2
+
   # Temporary file paths for audio recordings
   path_provider: ^2.1.0
 

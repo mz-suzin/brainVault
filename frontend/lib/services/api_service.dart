@@ -47,8 +47,9 @@ class ApiService {
   /// Add a text memory to the vault.
   ///
   /// Returns the saved [Memory] on success.
+  /// Throws [DisambiguationException] if duplicate names need conflict resolution.
   /// Throws [ApiException] on failure.
-  static Future<Memory> addTextMemory(String text) async {
+  static Future<dynamic> addTextMemory(String text) async {
     return _withRetry(() async {
       final response = await http
           .post(
@@ -66,8 +67,9 @@ class ApiService {
   ///
   /// [filePath] is the local path to the recorded audio file.
   /// Returns the saved [Memory] on success.
+  /// Throws [DisambiguationException] if conflict resolution is required.
   /// Throws [ApiException] on failure.
-  static Future<Memory> addAudioMemory(String filePath) async {
+  static Future<dynamic> addAudioMemory(String filePath) async {
     return _withRetry(() async {
       final request = http.MultipartRequest(
         'POST',
@@ -87,6 +89,102 @@ class ApiService {
       final response = await http.Response.fromStream(streamedResponse);
 
       return _handleAddResponse(response);
+    });
+  }
+
+  /// Submit a manually constructed memory to the database.
+  ///
+  /// [data] contains description, location, event_date, people_ids, new_people.
+  /// Returns the saved [Memory] on success.
+  static Future<Memory> addConstructedMemory(Map<String, dynamic> data) async {
+    return _withRetry(() async {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/api/memory/add'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(data),
+          )
+          .timeout(_timeout);
+
+      final result = _handleAddResponse(response);
+      if (result is Memory) {
+        return result;
+      }
+      throw const ApiException('Invalid response format for constructed memory.');
+    });
+  }
+
+  /// Finalize saving a memory after the user resolved a name conflict.
+  /// Sends the resolved person IDs along with the temporary extraction payload.
+  static Future<Memory> resolveMemoryConflict(
+    List<String> resolvedIds,
+    Map<String, dynamic> tempPayload,
+  ) async {
+    return _withRetry(() async {
+      final payload = {
+        'resolved_people_ids': resolvedIds,
+        'temp_extraction': tempPayload['extraction'],
+        'raw_text': tempPayload['raw_text'],
+        'source_type': tempPayload['source_type'],
+      };
+
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/api/memory/add'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(payload),
+          )
+          .timeout(_timeout);
+
+      final result = _handleAddResponse(response);
+      if (result is Memory) {
+        return result;
+      }
+      throw const ApiException('Conflict resolution failed to save.');
+    });
+  }
+
+  // ── People Directory API ──────────────────────────────────────────────────
+
+  /// Get the list of all registered people profiles in the directory.
+  static Future<List<dynamic>> getPeople() async {
+    return _withRetry(() async {
+      final response = await http
+          .get(Uri.parse('$baseUrl/api/people'))
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as List<dynamic>;
+      } else {
+        throw ApiException(_extractError(response));
+      }
+    });
+  }
+
+  /// Add a new person profile to the directory.
+  static Future<Map<String, dynamic>> addPerson(
+    String name,
+    String relation,
+    String notes,
+  ) async {
+    return _withRetry(() async {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/api/people'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'name': name,
+              'relation': relation,
+              'notes': notes,
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 201) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      } else {
+        throw ApiException(_extractError(response));
+      }
     });
   }
 
@@ -118,9 +216,19 @@ class ApiService {
   // ── Internal Helpers ───────────────────────────────────────────────────
 
   /// Parse the response from POST /api/memory/add
-  static Memory _handleAddResponse(http.Response response) {
+  /// Can return a [Memory] or trigger a [DisambiguationException]
+  static dynamic _handleAddResponse(http.Response response) {
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+
+    if (response.statusCode == 200 &&
+        data['status'] == 'disambiguation_required') {
+      throw DisambiguationException(
+        data['conflicts'] as List<dynamic>,
+        data['temp_payload'] as Map<String, dynamic>,
+      );
+    }
+
     if (response.statusCode == 201) {
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
       return Memory.fromJson(data['memory'] as Map<String, dynamic>);
     } else {
       throw ApiException(_extractError(response));
@@ -174,4 +282,11 @@ class ApiException implements Exception {
 
   @override
   String toString() => message;
+}
+
+/// Custom exception thrown when a name matches multiple profiles.
+class DisambiguationException implements Exception {
+  final List<dynamic> conflicts;
+  final Map<String, dynamic> tempPayload;
+  const DisambiguationException(this.conflicts, this.tempPayload);
 }

@@ -15,7 +15,10 @@ import 'package:permission_handler/permission_handler.dart';
 import '../services/api_service.dart';
 
 class AudioRecorderWidget extends StatefulWidget {
-  const AudioRecorderWidget({super.key});
+  final Function(List<dynamic> conflicts, Map<String, dynamic> tempPayload)?
+      onDisambiguationRequired;
+
+  const AudioRecorderWidget({super.key, this.onDisambiguationRequired});
 
   @override
   State<AudioRecorderWidget> createState() => _AudioRecorderWidgetState();
@@ -165,6 +168,11 @@ class _AudioRecorderWidgetState extends State<AudioRecorderWidget>
       if (!mounted) return;
       _showSnackBar('✅ Audio memory saved! (${memory.subject})',
           isError: false);
+    } on DisambiguationException catch (e) {
+      if (!mounted) return;
+      if (widget.onDisambiguationRequired != null) {
+        widget.onDisambiguationRequired!(e.conflicts, e.tempPayload);
+      }
     } on ApiException catch (e) {
       if (!mounted) return;
       _showSnackBar('❌ ${e.message}');

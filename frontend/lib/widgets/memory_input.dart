@@ -7,7 +7,10 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 
 class MemoryInput extends StatefulWidget {
-  const MemoryInput({super.key});
+  final Function(List<dynamic> conflicts, Map<String, dynamic> tempPayload)?
+      onDisambiguationRequired;
+
+  const MemoryInput({super.key, this.onDisambiguationRequired});
 
   @override
   State<MemoryInput> createState() => _MemoryInputState();
@@ -56,6 +59,12 @@ class _MemoryInputState extends State<MemoryInput>
         '✅  Memory saved! (${memory.subject})',
         isError: false,
       );
+    } on DisambiguationException catch (e) {
+      if (!mounted) return;
+      _controller.clear();
+      if (widget.onDisambiguationRequired != null) {
+        widget.onDisambiguationRequired!(e.conflicts, e.tempPayload);
+      }
     } on ApiException catch (e) {
       if (!mounted) return;
       _showSnackBar('❌  ${e.message}', isError: true);
