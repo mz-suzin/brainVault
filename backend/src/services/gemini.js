@@ -34,14 +34,27 @@ const EMBEDDING_MODEL = 'gemini-embedding-001';
 
 /**
  * Executes a function and retries it if it encounters a transient 503 error
- * (high demand / model overloaded), using a simple backoff delay.
+ * (high demand / model overloaded), or falls back to gemini-3.1-flash-lite on 429 Quota Exhausted.
  */
-async function callWithRetry(fn, retries = 3, delay = 1000) {
+async function callWithRetry(fn, defaultModel = null, retries = 3, delay = 1000) {
+  let currentModel = defaultModel;
   for (let i = 0; i < retries; i++) {
     try {
-      return await fn();
+      return await (defaultModel ? fn(currentModel) : fn());
     } catch (err) {
       const errMsg = err.message || '';
+      
+      // Quota exhausted (429) fallback
+      if (err.status === 429 || errMsg.includes('429') || errMsg.includes('Quota') || errMsg.includes('quota')) {
+        if (currentModel === FLASH_MODEL) {
+          console.warn(`[GEMINI] 429 Quota Exhausted for ${FLASH_MODEL}. Falling back to gemini-3.1-flash-lite...`);
+          currentModel = 'gemini-3.1-flash-lite';
+          continue; // Immediately retry with the fallback model
+        } else {
+          throw err; // If already fallen back or no fallback available, throw
+        }
+      }
+
       const isTransient =
         err.status === 503 ||
         errMsg.includes('503') ||
@@ -72,9 +85,9 @@ async function callWithRetry(fn, retries = 3, delay = 1000) {
  * @returns {Promise<Object>} Parsed JSON: { event_date, event_date_raw, subject, tags, cleaned_text }
  */
 async function extractMemoryFromText(text, currentDate) {
-  const response = await callWithRetry(() =>
+  const response = await callWithRetry((model) =>
     ai.models.generateContent({
-      model: FLASH_MODEL,
+      model: model,
       contents: [
         {
           role: 'user',
@@ -87,7 +100,7 @@ async function extractMemoryFromText(text, currentDate) {
         maxOutputTokens: 1024,
       },
     })
-  );
+  , FLASH_MODEL);
 
   return parseExtractionResponse(response.text);
 }
@@ -105,9 +118,9 @@ async function extractMemoryFromText(text, currentDate) {
 async function extractMemoryFromAudio(audioBuffer, mimeType, currentDate) {
   const base64Audio = audioBuffer.toString('base64');
 
-  const response = await callWithRetry(() =>
+  const response = await callWithRetry((model) =>
     ai.models.generateContent({
-      model: FLASH_MODEL,
+      model: model,
       contents: [
         {
           role: 'user',
@@ -134,7 +147,7 @@ async function extractMemoryFromAudio(audioBuffer, mimeType, currentDate) {
         maxOutputTokens: 1024,
       },
     })
-  );
+  , FLASH_MODEL);
 
   return parseExtractionResponse(response.text);
 }
@@ -177,9 +190,9 @@ async function generateEmbedding(text) {
  * @returns {Promise<string>} Natural language answer grounded in the provided context
  */
 async function synthesizeAnswer(question, memories) {
-  const response = await callWithRetry(() =>
+  const response = await callWithRetry((model) =>
     ai.models.generateContent({
-      model: FLASH_MODEL,
+      model: model,
       contents: [
         {
           role: 'user',
@@ -192,7 +205,7 @@ async function synthesizeAnswer(question, memories) {
         maxOutputTokens: 2048,
       },
     })
-  );
+  , FLASH_MODEL);
 
   return response.text;
 }
@@ -233,9 +246,9 @@ Respond with this exact JSON structure:
 }`;
 
   try {
-    const response = await callWithRetry(() =>
+    const response = await callWithRetry((model) =>
       ai.models.generateContent({
-        model: FLASH_MODEL,
+        model: model,
         contents: [{ role: 'user', parts: [{ text: userContent }] }],
         config: {
           systemInstruction,
@@ -243,7 +256,7 @@ Respond with this exact JSON structure:
           maxOutputTokens: 512,
         },
       })
-    );
+    , FLASH_MODEL);
 
     let cleaned = response.text.trim();
     if (cleaned.startsWith('```')) {
@@ -342,9 +355,9 @@ RULES:
 New Facts: "${newNotes}"`;
 
   try {
-    const response = await callWithRetry(() =>
+    const response = await callWithRetry((model) =>
       ai.models.generateContent({
-        model: FLASH_MODEL,
+        model: model,
         contents: [{ role: 'user', parts: [{ text: userContent }] }],
         config: {
           systemInstruction,
@@ -352,7 +365,7 @@ New Facts: "${newNotes}"`;
           maxOutputTokens: 256,
         },
       })
-    );
+    , FLASH_MODEL);
     return response.text.trim();
   } catch (err) {
     console.error('[GEMINI] Merging notes failed:', err.message);
