@@ -42,6 +42,21 @@ class ApiService {
     }
   }
 
+  /// Check whether the backend is reachable and healthy.
+  ///
+  /// Returns `true` if the server responds with HTTP 200, `false` otherwise.
+  /// Used by the UI status indicator to show a red/green connection light.
+  static Future<bool> checkHealth() async {
+    try {
+      final response = await http
+          .get(Uri.parse('$baseUrl/api/health'))
+          .timeout(const Duration(seconds: 15));
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
   // ── Memory Ingestion ───────────────────────────────────────────────────
 
   /// Add a text memory to the vault.
