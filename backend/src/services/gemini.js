@@ -339,40 +339,48 @@ function parseExtractionResponse(rawText) {
  */
 function repairTruncatedJson(str) {
   let s = str.trimEnd();
-
-  // If the last non-whitespace char is part of an incomplete string, close it.
-  // Count unescaped quotes to decide if we are inside a string.
   let inString = false;
-  let i = 0;
-  while (i < s.length) {
+  let result = '';
+  
+  // Pass 1: escape literal newlines/tabs inside strings and close unterminated strings
+  for (let i = 0; i < s.length; i++) {
     const ch = s[i];
     if (ch === '\\' && inString) {
-      i += 2; // skip escaped character
+      result += s[i] + (s[i + 1] || '');
+      i++;
       continue;
     }
     if (ch === '"') inString = !inString;
-    i++;
+    
+    if (inString && ch === '\n') {
+      result += '\\n';
+    } else if (inString && ch === '\r') {
+      result += '\\r';
+    } else if (inString && ch === '\t') {
+      result += '\\t';
+    } else {
+      result += ch;
+    }
   }
-  if (inString) s += '"'; // close the open string
+  if (inString) result += '"';
 
-  // Remove any trailing comma before we close containers
-  s = s.replace(/,\s*$/, '');
-
-  // Close unclosed arrays and objects in reverse order
+  // Pass 2: Close unclosed arrays and objects
+  result = result.replace(/,\s*$/, '');
   const stack = [];
   inString = false;
-  for (let j = 0; j < s.length; j++) {
-    const ch = s[j];
+  for (let j = 0; j < result.length; j++) {
+    const ch = result[j];
     if (ch === '\\' && inString) { j++; continue; }
     if (ch === '"') { inString = !inString; continue; }
     if (inString) continue;
+    
     if (ch === '{') stack.push('}');
     else if (ch === '[') stack.push(']');
     else if (ch === '}' || ch === ']') stack.pop();
   }
-  while (stack.length) s += stack.pop();
-
-  return s;
+  
+  while (stack.length) result += stack.pop();
+  return result;
 }
 
 /**
