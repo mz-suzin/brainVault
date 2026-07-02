@@ -155,17 +155,13 @@ class _MemoryInputState extends State<MemoryInput>
             maxLines: 4,
             minLines: 3,
             enabled: !_isLoading,
+            textCapitalization: TextCapitalization.sentences,
             style: const TextStyle(
               color: Color(0xFFE8E8F0),
               fontSize: 15,
               height: 1.5,
             ),
             decoration: InputDecoration(
-              hintText: 'What happened today? Tell your brain...',
-              hintStyle: TextStyle(
-                color: const Color(0xFFE8E8F0).withValues(alpha: 0.3),
-                fontSize: 15,
-              ),
               filled: true,
               fillColor: const Color(0xFF0F0F1A).withValues(alpha: 0.6),
               border: OutlineInputBorder(

@@ -124,6 +124,7 @@ class _ConstructMemoryWizardState extends State<ConstructMemoryWizard>
                   children: [
                     TextField(
                       controller: nameCtrl,
+                      textCapitalization: TextCapitalization.words,
                       style: const TextStyle(color: Color(0xFFE8E8F0)),
                       decoration: InputDecoration(
                         labelText: 'Name',
@@ -164,12 +165,11 @@ class _ConstructMemoryWizardState extends State<ConstructMemoryWizard>
                     TextField(
                       controller: notesCtrl,
                       maxLines: 2,
+                      textCapitalization: TextCapitalization.sentences,
                       style: const TextStyle(color: Color(0xFFE8E8F0)),
                       decoration: InputDecoration(
                         labelText: 'Facts/Notes',
                         labelStyle: const TextStyle(color: Colors.white60),
-                        hintText: 'Loves coding, plays guitar...',
-                        hintStyle: TextStyle(color: const Color(0xFFE8E8F0).withValues(alpha: 0.3)),
                         enabledBorder: UnderlineInputBorder(
                           borderSide: BorderSide(color: const Color(0xFF6C63FF).withValues(alpha: 0.3)),
                         ),
@@ -387,10 +387,9 @@ class _ConstructMemoryWizardState extends State<ConstructMemoryWizard>
                 child: TextField(
                   controller: _locationController,
                   enabled: !_isLoading,
+                  textCapitalization: TextCapitalization.words,
                   style: const TextStyle(color: Color(0xFFE8E8F0), fontSize: 13),
                   decoration: InputDecoration(
-                    hintText: 'Location',
-                    hintStyle: TextStyle(color: const Color(0xFFE8E8F0).withValues(alpha: 0.3)),
                     prefixIcon: const Icon(Icons.location_on_rounded, color: Color(0xFF6C63FF), size: 16),
                     filled: true,
                     fillColor: const Color(0xFF0F0F1A).withValues(alpha: 0.6),
@@ -454,8 +453,6 @@ class _ConstructMemoryWizardState extends State<ConstructMemoryWizard>
                 enabled: !_isLoading,
                 style: const TextStyle(color: Color(0xFFE8E8F0), fontSize: 13),
                 decoration: InputDecoration(
-                  hintText: 'Search people by name...',
-                  hintStyle: TextStyle(color: const Color(0xFFE8E8F0).withValues(alpha: 0.3)),
                   prefixIcon: const Icon(Icons.search_rounded, size: 18),
                   filled: true,
                   fillColor: const Color(0xFF0F0F1A).withValues(alpha: 0.6),
@@ -529,10 +526,9 @@ class _ConstructMemoryWizardState extends State<ConstructMemoryWizard>
             maxLines: 3,
             minLines: 2,
             enabled: !_isLoading,
+            textCapitalization: TextCapitalization.sentences,
             style: const TextStyle(color: Color(0xFFE8E8F0), fontSize: 13, height: 1.4),
             decoration: InputDecoration(
-              hintText: 'Met with Arthur, discussed new ideas...',
-              hintStyle: TextStyle(color: const Color(0xFFE8E8F0).withValues(alpha: 0.3)),
               filled: true,
               fillColor: const Color(0xFF0F0F1A).withValues(alpha: 0.6),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),

@@ -115,16 +115,12 @@ class _QueryPanelState extends State<QueryPanel> {
                   controller: _controller,
                   enabled: !_isLoading,
                   onSubmitted: (_) => _submitQuery(),
+                  textCapitalization: TextCapitalization.sentences,
                   style: const TextStyle(
                     color: Color(0xFFE8E8F0),
                     fontSize: 15,
                   ),
                   decoration: InputDecoration(
-                    hintText: 'When did I run my first marathon?',
-                    hintStyle: TextStyle(
-                      color: const Color(0xFFE8E8F0).withValues(alpha: 0.3),
-                      fontSize: 14,
-                    ),
                     filled: true,
                     fillColor:
                         const Color(0xFF0F0F1A).withValues(alpha: 0.6),
