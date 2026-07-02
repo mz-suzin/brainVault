@@ -5,6 +5,7 @@
 /// 2. Audio Recorder (voice memo)
 /// 3. Query Panel (search + results terminal)
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../widgets/memory_input.dart';
 import '../widgets/audio_recorder.dart';
@@ -34,6 +35,10 @@ class _HomeScreenState extends State<HomeScreen>
   // Pulse animation controller for the "checking" state
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
+  
+  // Polling timer for backend status
+  Timer? _statusTimer;
+
   @override
   void initState() {
     super.initState();
@@ -48,12 +53,17 @@ class _HomeScreenState extends State<HomeScreen>
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
-    // Kick off health check — result updates the dot color
+    // Kick off health check immediately, then poll every 5 seconds
     _checkBackendStatus();
+    _statusTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => _checkBackendStatus(),
+    );
   }
 
   @override
   void dispose() {
+    _statusTimer?.cancel();
     _pulseController.dispose();
     super.dispose();
   }
