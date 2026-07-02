@@ -282,14 +282,14 @@ class _QueryPanelState extends State<QueryPanel> {
     );
   }
 
-  /// Successful query result with answer and source cards
+  /// Successful query result with answer only
   Widget _buildResult() {
     if (_result == null) return const SizedBox.shrink();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // LLM-synthesized answer
+        // LLM-synthesized organic answer
         Text(
           _result!.answer,
           style: const TextStyle(
@@ -298,95 +298,7 @@ class _QueryPanelState extends State<QueryPanel> {
             height: 1.6,
           ),
         ),
-
-        // Source memory references
-        if (_result!.sources.isNotEmpty) ...[
-          const SizedBox(height: 16),
-          Divider(
-            color: const Color(0xFFE8E8F0).withValues(alpha: 0.1),
-            height: 1,
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Sources',
-            style: TextStyle(
-              color: const Color(0xFF4FC3F7).withValues(alpha: 0.7),
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.5,
-            ),
-          ),
-          const SizedBox(height: 8),
-          ...(_result!.sources.map(_buildSourceCard)),
-        ],
       ],
-    );
-  }
-
-  /// Individual source memory card
-  Widget _buildSourceCard(SourceMemory source) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1A1A2E).withValues(alpha: 0.5),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: const Color(0xFF4FC3F7).withValues(alpha: 0.1),
-          ),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Relevance percentage badge
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: const Color(0xFF4FC3F7).withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Text(
-                '${source.relevance}%',
-                style: const TextStyle(
-                  color: Color(0xFF4FC3F7),
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Date + subject label
-                  Text(
-                    '${source.eventDate ?? 'Unknown date'} · ${source.subject}',
-                    style: TextStyle(
-                      color: const Color(0xFFE8E8F0).withValues(alpha: 0.6),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  // Memory summary
-                  Text(
-                    source.summary,
-                    style: TextStyle(
-                      color: const Color(0xFFE8E8F0).withValues(alpha: 0.8),
-                      fontSize: 12,
-                      height: 1.4,
-                    ),
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
