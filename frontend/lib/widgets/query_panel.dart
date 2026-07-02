@@ -42,6 +42,8 @@ class _QueryPanelState extends State<QueryPanel> {
     try {
       final result = await ApiService.queryMemories(question);
       if (!mounted) return;
+      
+      _controller.clear();
       setState(() => _result = result);
     } on ApiException catch (e) {
       if (!mounted) return;
