@@ -36,38 +36,56 @@ const EMBEDDING_MODEL = 'gemini-embedding-001';
  * Executes a function and retries it if it encounters a transient 503 error
  * (high demand / model overloaded), or falls back to gemini-3.1-flash-lite on 429 Quota Exhausted.
  */
-async function callWithRetry(fn, defaultModel = null, retries = 3, delay = 1000) {
+async function callWithRetry(fn, defaultModel = null, retries = 4, delay = 1500) {
   let currentModel = defaultModel;
   for (let i = 0; i < retries; i++) {
     try {
       return await (defaultModel ? fn(currentModel) : fn());
     } catch (err) {
+      // Normalise the error message — the Gemini SDK sometimes wraps the
+      // API error inside a JSON string or a nested error.status object.
       const errMsg = err.message || '';
-      
-      // Quota exhausted (429) fallback
-      if (err.status === 429 || errMsg.includes('429') || errMsg.includes('Quota') || errMsg.includes('quota')) {
+      let errCode = err.status || err.code || 0;
+
+      // Try to extract status code from a JSON-stringified error body
+      if (!errCode && errMsg.includes('{')) {
+        try {
+          const parsed = JSON.parse(errMsg.replace(/^[^{]*/, ''));
+          errCode = parsed?.error?.code || parsed?.code || 0;
+        } catch (_) {}
+      }
+
+      // ── 429 Quota Exhausted: fall back to flash-lite ─────────────────────
+      const isQuota =
+        errCode === 429 ||
+        errMsg.includes('429') ||
+        errMsg.toLowerCase().includes('quota');
+
+      if (isQuota) {
         if (currentModel === FLASH_MODEL) {
-          console.warn(`[GEMINI] 429 Quota Exhausted for ${FLASH_MODEL}. Falling back to gemini-3.1-flash-lite...`);
-          currentModel = 'gemini-3.1-flash-lite';
-          continue; // Immediately retry with the fallback model
+          console.warn(`[GEMINI] 429 Quota Exhausted for ${FLASH_MODEL}. Falling back to gemini-2.0-flash-lite...`);
+          currentModel = 'gemini-2.0-flash-lite';
+          continue;
         } else {
-          throw err; // If already fallen back or no fallback available, throw
+          throw err;
         }
       }
 
+      // ── 503 / UNAVAILABLE: exponential back-off ──────────────────────────
       const isTransient =
-        err.status === 503 ||
+        errCode === 503 ||
         errMsg.includes('503') ||
-        errMsg.includes('high demand') ||
-        errMsg.includes('UNAVAILABLE') ||
-        errMsg.includes('overloaded');
+        errMsg.toLowerCase().includes('high demand') ||
+        errMsg.toLowerCase().includes('unavailable') ||
+        errMsg.toLowerCase().includes('overloaded');
 
       if (isTransient && i < retries - 1) {
-        console.warn(`[GEMINI] 503 High Demand, retrying in ${delay}ms... (Attempt ${i + 1}/${retries})`);
-        await new Promise((resolve) => setTimeout(resolve, delay));
-        delay *= 2; // Exponential backoff
+        const wait = delay * Math.pow(2, i);
+        console.warn(`[GEMINI] 503 High Demand — retrying in ${wait}ms (attempt ${i + 1}/${retries})...`);
+        await new Promise((resolve) => setTimeout(resolve, wait));
         continue;
       }
+
       throw err;
     }
   }
@@ -97,7 +115,7 @@ async function extractMemoryFromText(text, currentDate) {
       config: {
         systemInstruction: EXTRACTION_SYSTEM_PROMPT,
         temperature: 0.1, // Low temp for deterministic, structured output
-        maxOutputTokens: 1024,
+        maxOutputTokens: 2048, // Increased to prevent truncation of large extractions
       },
     })
   , FLASH_MODEL);
@@ -144,7 +162,7 @@ async function extractMemoryFromAudio(audioBuffer, mimeType, currentDate) {
       config: {
         systemInstruction: EXTRACTION_SYSTEM_PROMPT,
         temperature: 0.1,
-        maxOutputTokens: 1024,
+        maxOutputTokens: 2048, // Increased to prevent truncation of large extractions
       },
     })
   , FLASH_MODEL);
@@ -297,36 +315,90 @@ function parseExtractionResponse(rawText) {
       .replace(/\n?```\s*$/, '');
   }
 
+  // ── Attempt 1: Parse as-is ────────────────────────────────────────────────
   try {
-    const parsed = JSON.parse(cleaned);
+    return normalizeExtraction(JSON.parse(cleaned));
+  } catch (_) {}
 
-    // Validate required fields exist
-    if (!parsed.subject || !parsed.cleaned_text) {
-      throw new Error('LLM response missing required fields: subject, cleaned_text');
-    }
-
-    // Normalize and return
-    return {
-      event_date: parsed.event_date || null,
-      event_date_raw: parsed.event_date_raw || null,
-      subject: parsed.subject.toLowerCase().trim(),
-      tags: Array.isArray(parsed.tags)
-        ? parsed.tags.map((t) => String(t).toLowerCase().trim()).filter(Boolean)
-        : [],
-      people_details: Array.isArray(parsed.people_details)
-        ? parsed.people_details.map((p) => ({
-            name: String(p.name || '').trim(),
-            relation: String(p.relation || 'other').toLowerCase().trim(),
-            notes: String(p.notes || '').trim(),
-          })).filter((p) => p.name.length > 0)
-        : [],
-      raw_transcript: parsed.raw_transcript ? parsed.raw_transcript.trim() : null,
-      cleaned_text: parsed.cleaned_text.trim(),
-    };
+  // ── Attempt 2: Repair truncated JSON ─────────────────────────────────────
+  // The LLM may have been cut off mid-string due to token limits. We close
+  // any open strings and then close unclosed braces/brackets.
+  try {
+    const repaired = repairTruncatedJson(cleaned);
+    console.warn('[GEMINI] JSON was truncated — used repaired version');
+    return normalizeExtraction(JSON.parse(repaired));
   } catch (err) {
-    console.error('[GEMINI] Failed to parse extraction response:', rawText);
+    console.error('[GEMINI] Failed to parse extraction response even after repair:', rawText);
     throw new Error(`LLM returned invalid JSON: ${err.message}`);
   }
+}
+
+/**
+ * Best-effort repair of a JSON string that was cut off mid-generation.
+ * Closes any unterminated string literal, then closes unclosed arrays/objects.
+ */
+function repairTruncatedJson(str) {
+  let s = str.trimEnd();
+
+  // If the last non-whitespace char is part of an incomplete string, close it.
+  // Count unescaped quotes to decide if we are inside a string.
+  let inString = false;
+  let i = 0;
+  while (i < s.length) {
+    const ch = s[i];
+    if (ch === '\\' && inString) {
+      i += 2; // skip escaped character
+      continue;
+    }
+    if (ch === '"') inString = !inString;
+    i++;
+  }
+  if (inString) s += '"'; // close the open string
+
+  // Remove any trailing comma before we close containers
+  s = s.replace(/,\s*$/, '');
+
+  // Close unclosed arrays and objects in reverse order
+  const stack = [];
+  inString = false;
+  for (let j = 0; j < s.length; j++) {
+    const ch = s[j];
+    if (ch === '\\' && inString) { j++; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === '{') stack.push('}');
+    else if (ch === '[') stack.push(']');
+    else if (ch === '}' || ch === ']') stack.pop();
+  }
+  while (stack.length) s += stack.pop();
+
+  return s;
+}
+
+/**
+ * Validate required fields and normalize an extraction result object.
+ */
+function normalizeExtraction(parsed) {
+  if (!parsed.subject || !parsed.cleaned_text) {
+    throw new Error('LLM response missing required fields: subject, cleaned_text');
+  }
+  return {
+    event_date: parsed.event_date || null,
+    event_date_raw: parsed.event_date_raw || null,
+    subject: parsed.subject.toLowerCase().trim(),
+    tags: Array.isArray(parsed.tags)
+      ? parsed.tags.map((t) => String(t).toLowerCase().trim()).filter(Boolean)
+      : [],
+    people_details: Array.isArray(parsed.people_details)
+      ? parsed.people_details.map((p) => ({
+          name: String(p.name || '').trim(),
+          relation: String(p.relation || 'other').toLowerCase().trim(),
+          notes: String(p.notes || '').trim(),
+        })).filter((p) => p.name.length > 0)
+      : [],
+    raw_transcript: parsed.raw_transcript ? parsed.raw_transcript.trim() : null,
+    cleaned_text: parsed.cleaned_text.trim(),
+  };
 }
 
 /**
