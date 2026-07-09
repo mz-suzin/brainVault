@@ -63,6 +63,8 @@ class SourceMemory {
   final String subject;
   final List<String> tags;
   final String summary;
+  final String rawText;
+  final DateTime? createdAt;
   final int relevance;
 
   SourceMemory({
@@ -71,6 +73,8 @@ class SourceMemory {
     required this.subject,
     required this.tags,
     required this.summary,
+    required this.rawText,
+    this.createdAt,
     required this.relevance,
   });
 
@@ -84,6 +88,10 @@ class SourceMemory {
               .toList() ??
           [],
       summary: json['summary'] as String? ?? '',
+      rawText: json['raw_text'] as String? ?? '',
+      createdAt: json['created_at'] != null
+          ? DateTime.tryParse(json['created_at'] as String)
+          : null,
       relevance: json['relevance'] as int? ?? 0,
     );
   }
