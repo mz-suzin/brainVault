@@ -541,10 +541,8 @@ class _SourceMemoryCardState extends State<_SourceMemoryCard>
                       children: [
                         Text(
                           source.summary,
-                          maxLines: _isExpanded ? null : 2,
-                          overflow: _isExpanded
-                              ? TextOverflow.visible
-                              : TextOverflow.ellipsis,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color: const Color(0xFFE8E8F0)
                                 .withValues(alpha: 0.75),
