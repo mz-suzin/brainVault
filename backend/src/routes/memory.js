@@ -374,20 +374,33 @@ router.post('/query', async (req, res) => {
       });
     }
 
-    // Step 4: Synthesize a natural language answer from context
+    // Step 4: Synthesize a natural language answer from ALL context
+    //         (even low-relevance matches can help the LLM)
     const answer = await synthesizeAnswer(trimmedQuestion, matches);
 
     // Step 5: Format source references for the client
-    const sources = matches.map((m) => ({
+    const allSources = matches.map((m) => ({
       id: m.id,
       event_date: m.event_date,
       subject: m.subject,
       tags: m.tags,
       summary: m.cleaned_text,
+      raw_text: m.raw_text,
+      created_at: m.created_at,
       relevance: Math.round((m.similarity_score || 0) * 100),
     }));
 
-    console.log(`[QUERY] Answered with ${sources.length} source(s)`);
+    // Step 6: Filter out low-relevance noise from source cards
+    //   - Absolute floor: discard anything below 25% combined score
+    //   - Relative gap: discard if less than 35% of the top result's score
+    //   (This prevents unrelated memories from showing as "sources")
+    const topRelevance = allSources.length > 0 ? allSources[0].relevance : 0;
+    const relativeThreshold = Math.round(topRelevance * 0.35);
+    const sources = allSources.filter(
+      (s) => s.relevance >= 25 && s.relevance >= relativeThreshold
+    );
+
+    console.log(`[QUERY] Answered with ${sources.length}/${allSources.length} source(s) (filtered by relevance)`);
 
     return res.json({ answer, sources });
   } catch (err) {
